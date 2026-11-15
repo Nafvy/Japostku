@@ -1,0 +1,287 @@
+{
+  "entities": {
+    "UserPublic": {
+      "title": "UserPublic",
+      "description": "Public seller display profile without PII",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 50
+        },
+        "isOwner": {
+          "type": "boolean"
+        },
+        "isVerified": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 64
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 64
+        }
+      },
+      "required": ["uid", "displayName", "isOwner", "isVerified", "createdAt", "updatedAt"]
+    },
+    "UserPrivate": {
+      "title": "UserPrivate",
+      "description": "Private user PII isolated from public reads",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "whatsapp": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "isBanned": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 64
+        }
+      },
+      "required": ["uid", "email", "whatsapp", "isBanned", "updatedAt"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Trusted admin role marker document",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "moderator"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 64
+        }
+      },
+      "required": ["uid", "email", "role", "createdAt"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "Classified item or service listing",
+      "type": "object",
+      "properties": {
+        "authorId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "sellerName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 50
+        },
+        "authorIsOwner": {
+          "type": "boolean"
+        },
+        "authorVerified": {
+          "type": "boolean"
+        },
+        "isPinned": {
+          "type": "boolean"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 80
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 2000
+        },
+        "priceIdr": {
+          "type": "number"
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "elektronik",
+            "kendaraan",
+            "properti",
+            "fashion",
+            "rumah_tangga",
+            "hobi",
+            "jasa",
+            "lainnya"
+          ]
+        },
+        "images": {
+          "type": "array",
+          "description": "1 to 5 image paths"
+        },
+        "contactWhatsapp": {
+          "type": "string",
+          "minLength": 9,
+          "maxLength": 20,
+          "pattern": "^62[0-9]{8,13}$"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "sold"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 64
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "authorId",
+        "sellerName",
+        "authorIsOwner",
+        "authorVerified",
+        "isPinned",
+        "title",
+        "description",
+        "priceIdr",
+        "category",
+        "images",
+        "contactWhatsapp",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "BoardSetting": {
+      "title": "BoardSetting",
+      "description": "Owner announcement configuration for the board",
+      "type": "object",
+      "properties": {
+        "ownerNotice": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 64
+        }
+      },
+      "required": ["ownerNotice", "updatedBy", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Staff and owner moderation audit entry",
+      "type": "object",
+      "properties": {
+        "actorId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "actorName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 50
+        },
+        "action": {
+          "type": "string",
+          "enum": ["ban", "unban", "role_add", "role_remove", "post_delete", "post_pin", "post_unpin", "notice_update"]
+        },
+        "targetType": {
+          "type": "string",
+          "enum": ["user", "post", "setting"]
+        },
+        "targetId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "targetLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 64
+        }
+      },
+      "required": ["actorId", "actorName", "action", "targetType", "targetId", "targetLabel", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserPublic" },
+      "description": "Public seller profile without PII"
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivate" },
+      "description": "Isolated private user PII"
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Admin role documents"
+    },
+    "/posts/{postId}": {
+      "schema": { "$ref": "#/entities/Post" },
+      "description": "Public classified listings"
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/BoardSetting" },
+      "description": "Global board settings managed by owner"
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Moderation audit logs"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "Japostku",
+  "description": "Papan iklan barang dan jasa dengan kontak penjual langsung via WhatsApp dan dashboard moderasi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
