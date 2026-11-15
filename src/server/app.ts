@@ -62,17 +62,26 @@ import type { PostCategory, PostStatus, SortOrder } from '../lib/types';
 const DAILY_POST_LIMIT = 10;
 
 function readFirebaseApiKey(): string {
-  if (process.env.FIREBASE_API_KEY) {
-    return process.env.FIREBASE_API_KEY;
+  if (process.env.FIREBASE_API_KEY?.trim()) {
+    return process.env.FIREBASE_API_KEY.trim();
   }
-  try {
-    const configPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
-    if (fs.existsSync(configPath)) {
-      const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as { apiKey?: string };
-      return parsed.apiKey || '';
+  if (process.env.VITE_FIREBASE_API_KEY?.trim()) {
+    return process.env.VITE_FIREBASE_API_KEY.trim();
+  }
+  const candidates = [
+    path.resolve(process.cwd(), 'firebase-applet-config.json'),
+    new URL('../firebase-applet-config.json', import.meta.url),
+    new URL('../../firebase-applet-config.json', import.meta.url),
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        const parsed = JSON.parse(fs.readFileSync(candidate, 'utf8')) as { apiKey?: string };
+        if (parsed.apiKey) return parsed.apiKey;
+      }
+    } catch {
+      // Try next candidate
     }
-  } catch {
-    // Fallback to empty if unavailable
   }
   return '';
 }
@@ -111,25 +120,32 @@ function asyncRoute(fn: AsyncRoute) {
 }
 
 function isHttpsRequest(req: Request): boolean {
-  const proto = req.headers['x-forwarded-proto'];
+  const protoHeader = req.headers['x-forwarded-proto'];
+  const proto = Array.isArray(protoHeader)
+    ? protoHeader[0]
+    : typeof protoHeader === 'string'
+      ? protoHeader.split(',')[0].trim()
+      : '';
   return req.secure || proto === 'https';
 }
 
 function setSessionCookie(req: Request, res: Response, token: string): void {
+  const https = isHttpsRequest(req);
   res.cookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    sameSite: 'lax',
-    secure: isHttpsRequest(req),
+    sameSite: https ? 'none' : 'lax',
+    secure: https,
     path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 }
 
 function clearSessionCookie(req: Request, res: Response): void {
+  const https = isHttpsRequest(req);
   res.clearCookie(SESSION_COOKIE_NAME, {
     path: '/',
-    sameSite: 'lax',
-    secure: isHttpsRequest(req),
+    sameSite: https ? 'none' : 'lax',
+    secure: https,
   });
 }
 
@@ -208,6 +224,9 @@ async function verifyFirebaseIdToken(
 ): Promise<{ uid: string; email: string; displayName: string; emailVerified: boolean } | null> {
   const apiKey = readFirebaseApiKey();
   if (!idToken || typeof idToken !== 'string' || !apiKey) {
+    if (!apiKey) {
+      console.error('Firebase API key not found on server for token verification.');
+    }
     return null;
   }
   try {
@@ -220,6 +239,7 @@ async function verifyFirebaseIdToken(
       }
     );
     if (!response.ok) {
+      console.error('Firebase accounts:lookup failed with status:', response.status);
       return null;
     }
     const data = (await response.json()) as {
@@ -289,6 +309,13 @@ export function createApiApp(): Express {
     })
   );
 
+  app.use((req: Request & { _body?: boolean }, _res: Response, next: NextFunction) => {
+    if (req.body !== undefined && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+      req._body = true;
+    }
+    next();
+  });
+
   app.use(express.json({ limit: '1mb' }));
 
   app.get('/api/health', (_req, res) => {
@@ -325,6 +352,13 @@ export function createApiApp(): Express {
   app.post(
     '/api/auth/firebase',
     asyncRoute(async (req, res) => {
+      if (!readFirebaseApiKey()) {
+        res.status(500).json({
+          ok: false,
+          error: 'Konfigurasi Firebase API Key tidak ditemukan di server.',
+        });
+        return;
+      }
       const idToken = typeof req.body?.idToken === 'string' ? req.body.idToken.trim() : '';
       const verified = await verifyFirebaseIdToken(idToken);
       if (!verified || !verified.emailVerified) {
@@ -1359,6 +1393,20 @@ export function createApiApp(): Express {
       res.json({ ok: true, data: null });
     })
   );
+
+  app.use('/api', (_req: Request, res: Response) => {
+    res.status(404).json({ ok: false, error: 'Endpoint API tidak ditemukan.' });
+  });
+
+  app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
+    if (!req.path.startsWith('/api')) {
+      return next(err);
+    }
+    console.error('Unhandled API middleware error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ ok: false, error: sanitizeServerError(err) });
+    }
+  });
 
   return app;
 }

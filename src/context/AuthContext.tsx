@@ -66,12 +66,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       );
       return { ok: true, data: res.data.user };
     } catch (err) {
-      const message =
-        err instanceof Error && err.message.includes('popup-closed-by-user')
-          ? 'Jendela login Google ditutup sebelum selesai.'
-          : err instanceof Error && err.message.includes('popup-blocked')
-            ? 'Popup diblokir oleh peramban. Izinkan popup lalu coba lagi.'
-            : 'Gagal masuk dengan akun Google. Silakan coba lagi.';
+      const code =
+        err && typeof err === 'object' && 'code' in err && typeof (err as { code: unknown }).code === 'string'
+          ? (err as { code: string }).code
+          : '';
+      const rawMessage = err instanceof Error ? err.message : '';
+      let message = 'Gagal masuk dengan akun Google. Silakan coba lagi.';
+
+      if (code === 'auth/popup-closed-by-user' || rawMessage.includes('popup-closed-by-user')) {
+        message = 'Jendela login Google ditutup sebelum selesai.';
+      } else if (code === 'auth/cancelled-popup-request') {
+        message = 'Permintaan login dibatalkan. Silakan klik tombol sekali lagi.';
+      } else if (code === 'auth/popup-blocked' || rawMessage.includes('popup-blocked')) {
+        message = 'Popup diblokir oleh peramban. Izinkan popup lalu coba lagi.';
+      } else if (code === 'auth/unauthorized-domain' || rawMessage.includes('unauthorized-domain')) {
+        const host = typeof window !== 'undefined' ? window.location.hostname : 'domain ini';
+        message = `Domain ${host} belum didaftarkan pada Authorized domains di Firebase Authentication.`;
+      } else if (code === 'auth/operation-not-allowed') {
+        message = 'Login Google belum diaktifkan pada proyek Firebase.';
+      } else if (code === 'auth/network-request-failed') {
+        message = 'Koneksi ke layanan Google gagal. Periksa internet kamu lalu coba lagi.';
+      } else if (code) {
+        message = `Gagal masuk dengan akun Google, kode: ${code}.`;
+      }
+
       return { ok: false, error: message };
     }
   }, []);

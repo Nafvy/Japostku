@@ -59,13 +59,16 @@ export function LoginPage() {
     setError(null);
     setFieldErrors({});
     setGoogleBusy(true);
-    const res = await loginWithGoogle();
-    setGoogleBusy(false);
-    if (!res.ok) {
-      setError(res.error);
-      return;
+    try {
+      const res = await loginWithGoogle();
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      navigate(nextPath, { replace: true });
+    } finally {
+      setGoogleBusy(false);
     }
-    navigate(nextPath, { replace: true });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -240,13 +243,16 @@ export function RegisterPage() {
     setError(null);
     setFieldErrors({});
     setGoogleBusy(true);
-    const res = await loginWithGoogle();
-    setGoogleBusy(false);
-    if (!res.ok) {
-      setError(res.error);
-      return;
+    try {
+      const res = await loginWithGoogle();
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      navigate('/akun/postingan', { replace: true });
+    } finally {
+      setGoogleBusy(false);
     }
-    navigate('/akun/postingan', { replace: true });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
