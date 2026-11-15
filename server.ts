@@ -6,7 +6,7 @@ import { createApiApp } from './src/server/app';
 const PORT = Number(process.env.PORT || 3000);
 
 async function startServer(): Promise<void> {
-  const app = await createApiApp();
+  const app = createApiApp();
 
   if (process.env.NODE_ENV === 'production') {
     const distDir = path.resolve(process.cwd(), 'dist');

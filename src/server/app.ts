@@ -1,7 +1,7 @@
 import express, { type Request, type Response, type NextFunction, type Express } from 'express';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
-import firebaseConfig from '../../firebase-applet-config.json';
 import {
   createSessionToken,
   hashPassword,
@@ -16,7 +16,6 @@ import {
   createPostRecord,
   createUserRecord,
   deletePostRecord,
-  ensureInitialized,
   getExtraUploadPrefixes,
   getOwnerNotice,
   getPostById,
@@ -62,18 +61,48 @@ import type { PostCategory, PostStatus, SortOrder } from '../lib/types';
 
 const DAILY_POST_LIMIT = 10;
 
+function readFirebaseApiKey(): string {
+  if (process.env.FIREBASE_API_KEY) {
+    return process.env.FIREBASE_API_KEY;
+  }
+  try {
+    const configPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(configPath)) {
+      const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as { apiKey?: string };
+      return parsed.apiKey || '';
+    }
+  } catch {
+    // Fallback to empty if unavailable
+  }
+  return '';
+}
+
 interface AuthedRequest extends Request {
   currentUser?: StoredUser;
 }
 
 type AsyncRoute = (req: AuthedRequest, res: Response, next: NextFunction) => Promise<void>;
 
+function sanitizeServerError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : '';
+  if (msg.includes('SUPABASE_URL') || msg.includes('Konfigurasi Supabase')) {
+    return msg;
+  }
+  if (msg.includes('Could not find the table') || msg.includes('does not exist')) {
+    return 'Tabel database Supabase belum dibuat. Jalankan skrip supabase/schema.sql di SQL Editor Supabase.';
+  }
+  if (msg.includes('Invalid API key') || msg.includes('JWT')) {
+    return 'Kunci SUPABASE_SERVICE_ROLE_KEY tidak valid. Periksa kembali Environment Variables Vercel.';
+  }
+  return 'Terjadi kesalahan pada server.';
+}
+
 function asyncRoute(fn: AsyncRoute) {
   return (req: AuthedRequest, res: Response, next: NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch((err) => {
       console.error('API route error:', err);
       if (!res.headersSent) {
-        res.status(500).json({ ok: false, error: 'Terjadi kesalahan pada server.' });
+        res.status(500).json({ ok: false, error: sanitizeServerError(err) });
       } else {
         next(err);
       }
@@ -177,12 +206,13 @@ function requireOwner(req: AuthedRequest, res: Response, next: NextFunction): vo
 async function verifyFirebaseIdToken(
   idToken: string
 ): Promise<{ uid: string; email: string; displayName: string; emailVerified: boolean } | null> {
-  if (!idToken || typeof idToken !== 'string' || !firebaseConfig.apiKey) {
+  const apiKey = readFirebaseApiKey();
+  if (!idToken || typeof idToken !== 'string' || !apiKey) {
     return null;
   }
   try {
     const response = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(firebaseConfig.apiKey)}`,
+      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -215,14 +245,10 @@ async function verifyFirebaseIdToken(
   }
 }
 
-export async function createApiApp(): Promise<Express> {
+export function createApiApp(): Express {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
-
-  await ensureInitialized().catch((err) => {
-    console.warn('Initial database check deferred:', err);
-  });
 
   if (!process.env.VERCEL) {
     app.use('/seed-images', express.static(path.resolve(process.cwd(), 'src/assets/images')));

@@ -138,33 +138,47 @@ function mapAuditRow(row: SupabaseAuditRow): AuditLogEntry {
 
 export async function ensureInitialized(): Promise<void> {
   if (!isSupabaseEnabled()) {
+    if (process.env.VERCEL) {
+      throw new Error(
+        'Konfigurasi Supabase belum lengkap. Pastikan SUPABASE_URL dan SUPABASE_SERVICE_ROLE_KEY sudah diisi di Environment Variables Vercel lalu Redeploy.'
+      );
+    }
     loadDb();
     return;
   }
   if (!seededPromise) {
     seededPromise = (async () => {
       const sb = getSupabase();
-      const { data: settingsRow } = await sb
+      const { data: settingsRow, error: settingsErr } = await sb
         .from('settings')
         .select('id')
         .eq('id', 'board')
         .maybeSingle();
 
+      if (settingsErr) {
+        throw new Error(settingsErr.message);
+      }
+
       if (!settingsRow) {
-        await sb.from('settings').upsert(
+        const { error: upsertErr } = await sb.from('settings').upsert(
           { id: 'board', owner_notice: '', next_post_seq: 1 },
           { onConflict: 'id' }
         );
+        if (upsertErr) throw new Error(upsertErr.message);
       }
 
-      const { data: ownerRow } = await sb
+      const { data: ownerRow, error: ownerErr } = await sb
         .from('users')
         .select('id')
         .eq('email', OWNER_EMAIL)
         .maybeSingle();
 
+      if (ownerErr) {
+        throw new Error(ownerErr.message);
+      }
+
       if (!ownerRow) {
-        await sb.from('users').insert({
+        const { error: insertOwnerErr } = await sb.from('users').insert({
           id: 'usr-owner-01',
           firebase_uid: null,
           email: OWNER_EMAIL,
@@ -179,6 +193,7 @@ export async function ensureInitialized(): Promise<void> {
           banned_at: null,
           created_at: new Date().toISOString(),
         });
+        if (insertOwnerErr) throw new Error(insertOwnerErr.message);
       }
     })().catch((err) => {
       seededPromise = null;
