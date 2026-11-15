@@ -30,7 +30,9 @@ export function LoginPage() {
   const { search, navigate } = useRouter();
   const { user, setUser, bannedNotice, clearBannedNotice, loginWithGoogle } = useAuth();
   const params = new URLSearchParams(search);
-  const nextPath = sanitizeNextPath(params.get('next'), '/akun/postingan');
+  const rawNext = params.get('next');
+  const nextPath = sanitizeNextPath(rawNext, '/akun/postingan');
+  const registerHref = rawNext ? `/daftar?next=${encodeURIComponent(nextPath)}` : '/daftar';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -210,7 +212,7 @@ export function LoginPage() {
 
         <p className="mt-5 text-center text-sm text-zinc-600">
           Belum punya akun?{' '}
-          <Link href="/daftar" className="font-semibold text-zinc-950 hover:underline">
+          <Link href={registerHref} className="font-semibold text-zinc-950 hover:underline">
             Daftar sekarang
           </Link>
         </p>
@@ -220,8 +222,12 @@ export function LoginPage() {
 }
 
 export function RegisterPage() {
-  const { navigate } = useRouter();
+  const { search, navigate } = useRouter();
   const { user, setUser, clearBannedNotice, loginWithGoogle } = useAuth();
+  const params = new URLSearchParams(search);
+  const rawNext = params.get('next');
+  const nextPath = sanitizeNextPath(rawNext, '/akun/postingan');
+  const loginHref = rawNext ? `/masuk?next=${encodeURIComponent(nextPath)}` : '/masuk';
 
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -234,9 +240,9 @@ export function RegisterPage() {
 
   useEffect(() => {
     if (user) {
-      navigate('/akun/postingan', { replace: true });
+      navigate(nextPath, { replace: true });
     }
-  }, [user, navigate]);
+  }, [user, nextPath, navigate]);
 
   const handleGoogleSubmit = async () => {
     clearBannedNotice();
@@ -249,7 +255,7 @@ export function RegisterPage() {
         setError(res.error);
         return;
       }
-      navigate('/akun/postingan', { replace: true });
+      navigate(nextPath, { replace: true });
     } finally {
       setGoogleBusy(false);
     }
@@ -282,7 +288,7 @@ export function RegisterPage() {
     }
 
     setUser(res.data.user);
-    navigate('/akun/postingan', { replace: true });
+    navigate(nextPath, { replace: true });
   };
 
   return (
@@ -415,7 +421,7 @@ export function RegisterPage() {
 
         <p className="mt-5 text-center text-sm text-zinc-600">
           Sudah punya akun?{' '}
-          <Link href="/masuk" className="font-semibold text-zinc-950 hover:underline">
+          <Link href={loginHref} className="font-semibold text-zinc-950 hover:underline">
             Masuk di sini
           </Link>
         </p>

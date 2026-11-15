@@ -25,14 +25,25 @@ export function validateImageFile(file: { type: string; size: number }): string 
   return null;
 }
 
+function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  mimeType: string,
+  quality: number
+): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    canvas.toBlob(resolve, mimeType, quality);
+  });
+}
+
 export async function compressImage(file: File): Promise<Blob> {
   const validationError = validateImageFile(file);
   if (validationError) {
     throw new Error(validationError);
   }
 
-  const bitmap = await createImageBitmap(file);
+  let bitmap: ImageBitmap | null = null;
   try {
+    bitmap = await createImageBitmap(file);
     const { width, height } = bitmap;
     const longestSide = Math.max(width, height);
     const scale = longestSide > MAX_IMAGE_DIMENSION ? MAX_IMAGE_DIMENSION / longestSide : 1;
@@ -44,21 +55,22 @@ export async function compressImage(file: File): Promise<Blob> {
     canvas.height = targetHeight;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
-      throw new Error('Gagal memproses gambar di browser.');
+      return file;
     }
     ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
 
-    const blob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob(resolve, 'image/webp', 0.84);
-    });
-    if (!blob) {
-      throw new Error('Gagal mengompres gambar.');
+    const webpBlob = await canvasToBlob(canvas, 'image/webp', 0.84);
+    if (webpBlob && isWithinMaxFileSize(webpBlob.size)) {
+      return webpBlob;
     }
-    if (!isWithinMaxFileSize(blob.size)) {
-      throw new Error('Ukuran gambar setelah dikompres masih melebihi 5 MB.');
+    const jpegBlob = await canvasToBlob(canvas, 'image/jpeg', 0.86);
+    if (jpegBlob && isWithinMaxFileSize(jpegBlob.size)) {
+      return jpegBlob;
     }
-    return blob;
+    return file;
+  } catch {
+    return file;
   } finally {
-    bitmap.close();
+    bitmap?.close();
   }
 }

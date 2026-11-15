@@ -46,6 +46,7 @@ export function PostForm({
   const [priceIdr, setPriceIdr] = useState(initialValues.priceIdr);
   const [description, setDescription] = useState(initialValues.description);
   const [images, setImages] = useState<string[]>(initialValues.images);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [contactWhatsapp, setContactWhatsapp] = useState(initialValues.contactWhatsapp);
   const [clientErrors, setClientErrors] = useState<Record<string, string>>({});
 
@@ -53,6 +54,9 @@ export function PostForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (uploadingImages) {
+      return;
+    }
     const numericPrice = priceIdr.trim() === '' ? -1 : Number(priceIdr);
     const parsed = postInputSchema.safeParse({
       title,
@@ -94,6 +98,7 @@ export function PostForm({
               setClientErrors((prev) => ({ ...prev, images: '' }));
             }
           }}
+          onUploadingChange={setUploadingImages}
           error={fieldErrors.images}
         />
       </div>
@@ -230,8 +235,8 @@ export function PostForm({
         <Button type="button" variant="outline" onClick={onCancel} disabled={submitting}>
           Batal
         </Button>
-        <Button type="submit" disabled={submitting}>
-          {submitting ? 'Menyimpan...' : submitLabel}
+        <Button type="submit" disabled={submitting || uploadingImages}>
+          {uploadingImages ? 'Mengunggah foto...' : submitting ? 'Menyimpan...' : submitLabel}
         </Button>
       </div>
     </form>

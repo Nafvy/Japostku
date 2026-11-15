@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   CheckCircle2,
+  ImageOff,
   LayoutList,
   Mail,
   MessageCircle,
@@ -208,12 +209,21 @@ export function MyPostsPage() {
                         href={`/p/${post.id}`}
                         className="aspect-[4/3] w-20 shrink-0 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100"
                       >
-                        <img
-                          src={post.images[0]}
-                          alt={post.title}
-                          referrerPolicy="no-referrer"
-                          className="h-full w-full object-cover"
-                        />
+                        {post.images[0] ? (
+                          <img
+                            src={post.images[0]}
+                            alt={post.title}
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-zinc-400">
+                            <ImageOff className="h-4 w-4" aria-hidden="true" />
+                          </div>
+                        )}
                       </Link>
                       <div className="min-w-0 space-y-1">
                         <div className="flex items-center gap-2">
@@ -465,6 +475,7 @@ export function EditPostPage({ postId }: { postId: string }) {
         ) : (
           <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-5 sm:p-6">
             <PostForm
+              key={post.id}
               initialValues={{
                 title: post.title,
                 category: post.category,

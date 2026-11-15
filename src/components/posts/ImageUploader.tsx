@@ -15,13 +15,22 @@ export interface UploadedImageItem {
 interface ImageUploaderProps {
   value: string[];
   onChange: (paths: string[]) => void;
+  onUploadingChange?: (uploading: boolean) => void;
   error?: string;
 }
 
-export function ImageUploader({ value, onChange, error }: ImageUploaderProps) {
+export function ImageUploader({
+  value,
+  onChange,
+  onUploadingChange,
+  error,
+}: ImageUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onUploadingRef = useRef(onUploadingChange);
+  onUploadingRef.current = onUploadingChange;
+  const objectUrlsRef = useRef<Set<string>>(new Set());
 
   const [items, setItems] = useState<UploadedImageItem[]>(() =>
     value.map((p, idx) => ({
@@ -43,7 +52,18 @@ export function ImageUploader({ value, onChange, error }: ImageUploaderProps) {
       lastSyncedRef.current = serialized;
       onChangeRef.current(donePaths);
     }
+    onUploadingRef.current?.(items.some((it) => it.status === 'uploading'));
   }, [items]);
+
+  useEffect(() => {
+    const urls = objectUrlsRef.current;
+    return () => {
+      for (const url of urls) {
+        URL.revokeObjectURL(url);
+      }
+      urls.clear();
+    };
+  }, []);
 
   const uploadSingle = async (itemId: string, file: File) => {
     try {
@@ -100,6 +120,7 @@ export function ImageUploader({ value, onChange, error }: ImageUploaderProps) {
       const id = `up-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 7)}`;
       const validationError = validateImageFile(file);
       const previewUrl = URL.createObjectURL(file);
+      objectUrlsRef.current.add(previewUrl);
       if (validationError) {
         return {
           id,
@@ -126,7 +147,14 @@ export function ImageUploader({ value, onChange, error }: ImageUploaderProps) {
   };
 
   const handleRemove = (itemId: string) => {
-    setItems((prev) => prev.filter((it) => it.id !== itemId));
+    setItems((prev) => {
+      const target = prev.find((it) => it.id === itemId);
+      if (target && target.previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(target.previewUrl);
+        objectUrlsRef.current.delete(target.previewUrl);
+      }
+      return prev.filter((it) => it.id !== itemId);
+    });
   };
 
   const handleMakeCover = (itemId: string) => {

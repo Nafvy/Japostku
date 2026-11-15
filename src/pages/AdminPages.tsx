@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   Crown,
   FileText,
+  ImageOff,
   LayoutDashboard,
   Megaphone,
   MoreHorizontal,
@@ -145,7 +146,7 @@ interface SummaryResponse {
 }
 
 export function AdminOverviewPage() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { showToast } = useToast();
 
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
@@ -162,6 +163,10 @@ export function AdminOverviewPage() {
     setError(null);
     const res = await apiFetch<SummaryResponse>('/api/admin/summary');
     if (!res.ok) {
+      if (res.banned) {
+        await refreshUser();
+        return;
+      }
       setError(res.error);
       setLoading(false);
       return;
@@ -169,7 +174,7 @@ export function AdminOverviewPage() {
     setSummary(res.data);
     setNoticeInput(res.data.ownerNotice || '');
     setLoading(false);
-  }, []);
+  }, [refreshUser]);
 
   useEffect(() => {
     void loadSummary();
@@ -335,15 +340,20 @@ export function AdminOverviewPage() {
                         type="button"
                         variant="outline"
                         disabled={noticeBusy}
-                        onClick={() => {
-                          setNoticeInput('');
-                          void apiFetch('/api/owner/notice', {
+                        onClick={async () => {
+                          setNoticeBusy(true);
+                          const res = await apiFetch<{ ownerNotice: string }>('/api/owner/notice', {
                             method: 'PATCH',
                             body: JSON.stringify({ notice: '' }),
-                          }).then(() => {
-                            showToast('Pengumuman beranda dihapus.', 'success');
-                            void loadSummary();
                           });
+                          setNoticeBusy(false);
+                          if (!res.ok) {
+                            showToast(res.error, 'error');
+                            return;
+                          }
+                          setNoticeInput('');
+                          showToast('Pengumuman beranda dihapus.', 'success');
+                          void loadSummary();
                         }}
                       >
                         Kosongkan
@@ -439,7 +449,7 @@ interface UsersResponse {
 }
 
 export function AdminUsersPage() {
-  const { user: actor } = useAuth();
+  const { user: actor, refreshUser } = useAuth();
   const { navigate } = useRouter();
   const { showToast } = useToast();
 
@@ -490,13 +500,17 @@ export function AdminUsersPage() {
 
     const res = await apiFetch<UsersResponse>(`/api/admin/users?${params.toString()}`);
     if (!res.ok) {
+      if (res.banned) {
+        await refreshUser();
+        return;
+      }
       setError(res.error);
       setLoading(false);
       return;
     }
     setData(res.data);
     setLoading(false);
-  }, [searchTerm, filter, page]);
+  }, [searchTerm, filter, page, refreshUser]);
 
   useEffect(() => {
     void loadUsers();
@@ -930,16 +944,22 @@ interface AdminPostsResponse {
 }
 
 export function AdminPostsPage() {
-  const { user: actor } = useAuth();
+  const { user: actor, refreshUser } = useAuth();
   const { search } = useRouter();
   const { showToast } = useToast();
-  const initialQ = new URLSearchParams(search).get('q') || '';
+  const urlQ = new URLSearchParams(search).get('q') || '';
 
-  const [q, setQ] = useState(initialQ);
-  const [searchTerm, setSearchTerm] = useState(initialQ);
+  const [q, setQ] = useState(urlQ);
+  const [searchTerm, setSearchTerm] = useState(urlQ);
   const [statusFilter, setStatusFilter] = useState('semua');
   const [categoryFilter, setCategoryFilter] = useState<PostCategory | ''>('');
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setQ(urlQ);
+    setSearchTerm(urlQ);
+    setPage(1);
+  }, [urlQ]);
 
   const [data, setData] = useState<AdminPostsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -981,13 +1001,17 @@ export function AdminPostsPage() {
 
     const res = await apiFetch<AdminPostsResponse>(`/api/admin/posts?${params.toString()}`);
     if (!res.ok) {
+      if (res.banned) {
+        await refreshUser();
+        return;
+      }
       setError(res.error);
       setLoading(false);
       return;
     }
     setData(res.data);
     setLoading(false);
-  }, [searchTerm, statusFilter, categoryFilter, page]);
+  }, [searchTerm, statusFilter, categoryFilter, page, refreshUser]);
 
   useEffect(() => {
     void loadPosts();
@@ -1127,12 +1151,21 @@ export function AdminPostsPage() {
                       <tr key={post.id} className="hover:bg-zinc-50/70">
                         <td className="px-3.5 py-3">
                           <div className="flex items-center gap-3">
-                            <img
-                              src={post.images[0]}
-                              alt={post.title}
-                              referrerPolicy="no-referrer"
-                              className="aspect-[4/3] w-14 shrink-0 rounded-md border border-zinc-200 object-cover bg-zinc-100"
-                            />
+                            {post.images[0] ? (
+                              <img
+                                src={post.images[0]}
+                                alt={post.title}
+                                referrerPolicy="no-referrer"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                                className="aspect-[4/3] w-14 shrink-0 rounded-md border border-zinc-200 object-cover bg-zinc-100"
+                              />
+                            ) : (
+                              <div className="flex aspect-[4/3] w-14 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-zinc-100 text-zinc-400">
+                                <ImageOff className="h-4 w-4" aria-hidden="true" />
+                              </div>
+                            )}
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
                                 <p className="max-w-[180px] truncate font-medium text-zinc-950">

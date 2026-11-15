@@ -1,6 +1,5 @@
 import express, { type Request, type Response, type NextFunction, type Express } from 'express';
 import crypto from 'node:crypto';
-import fs from 'node:fs';
 import path from 'node:path';
 import {
   createSessionToken,
@@ -10,6 +9,7 @@ import {
   verifyPassword,
   verifySessionToken,
 } from './auth';
+import { verifyFirebaseIdToken } from './firebaseToken';
 import { toPublicPost, toUserProfile, UPLOADS_DIR, type StoredUser } from './store';
 import {
   clearAllPostRecords,
@@ -60,31 +60,6 @@ import { POST_CATEGORIES } from '../lib/categories';
 import type { PostCategory, PostStatus, SortOrder } from '../lib/types';
 
 const DAILY_POST_LIMIT = 10;
-
-function readFirebaseApiKey(): string {
-  if (process.env.FIREBASE_API_KEY?.trim()) {
-    return process.env.FIREBASE_API_KEY.trim();
-  }
-  if (process.env.VITE_FIREBASE_API_KEY?.trim()) {
-    return process.env.VITE_FIREBASE_API_KEY.trim();
-  }
-  const candidates = [
-    path.resolve(process.cwd(), 'firebase-applet-config.json'),
-    new URL('../firebase-applet-config.json', import.meta.url),
-    new URL('../../firebase-applet-config.json', import.meta.url),
-  ];
-  for (const candidate of candidates) {
-    try {
-      if (fs.existsSync(candidate)) {
-        const parsed = JSON.parse(fs.readFileSync(candidate, 'utf8')) as { apiKey?: string };
-        if (parsed.apiKey) return parsed.apiKey;
-      }
-    } catch {
-      // Try next candidate
-    }
-  }
-  return '';
-}
 
 interface AuthedRequest extends Request {
   currentUser?: StoredUser;
@@ -219,52 +194,6 @@ function requireOwner(req: AuthedRequest, res: Response, next: NextFunction): vo
   });
 }
 
-async function verifyFirebaseIdToken(
-  idToken: string
-): Promise<{ uid: string; email: string; displayName: string; emailVerified: boolean } | null> {
-  const apiKey = readFirebaseApiKey();
-  if (!idToken || typeof idToken !== 'string' || !apiKey) {
-    if (!apiKey) {
-      console.error('Firebase API key not found on server for token verification.');
-    }
-    return null;
-  }
-  try {
-    const response = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken }),
-      }
-    );
-    if (!response.ok) {
-      console.error('Firebase accounts:lookup failed with status:', response.status);
-      return null;
-    }
-    const data = (await response.json()) as {
-      users?: Array<{
-        localId?: string;
-        email?: string;
-        emailVerified?: boolean;
-        displayName?: string;
-      }>;
-    };
-    const fbUser = data.users?.[0];
-    if (!fbUser?.localId || !fbUser?.email) {
-      return null;
-    }
-    return {
-      uid: fbUser.localId,
-      email: fbUser.email.toLowerCase(),
-      displayName: fbUser.displayName?.trim() || fbUser.email.split('@')[0] || 'Pengguna',
-      emailVerified: Boolean(fbUser.emailVerified),
-    };
-  } catch {
-    return null;
-  }
-}
-
 export function createApiApp(): Express {
   const app = express();
   app.disable('x-powered-by');
@@ -278,6 +207,15 @@ export function createApiApp(): Express {
   app.post(
     '/api/uploads',
     requireUser,
+    (req: Request & { _body?: boolean }, _res: Response, next: NextFunction) => {
+      if (Buffer.isBuffer(req.body)) {
+        req._body = true;
+      } else if (req.body instanceof Uint8Array) {
+        req.body = Buffer.from(req.body);
+        req._body = true;
+      }
+      next();
+    },
     express.raw({
       type: ['image/jpeg', 'image/png', 'image/webp'],
       limit: `${MAX_IMAGE_BYTES + 1024}b`,
@@ -352,19 +290,19 @@ export function createApiApp(): Express {
   app.post(
     '/api/auth/firebase',
     asyncRoute(async (req, res) => {
-      if (!readFirebaseApiKey()) {
-        res.status(500).json({
-          ok: false,
-          error: 'Konfigurasi Firebase API Key tidak ditemukan di server.',
-        });
-        return;
-      }
       const idToken = typeof req.body?.idToken === 'string' ? req.body.idToken.trim() : '';
       const verified = await verifyFirebaseIdToken(idToken);
-      if (!verified || !verified.emailVerified) {
+      if (!verified) {
         res.status(401).json({
           ok: false,
           error: 'Verifikasi akun Google gagal. Silakan coba masuk lagi.',
+        });
+        return;
+      }
+      if (!verified.emailVerified) {
+        res.status(401).json({
+          ok: false,
+          error: 'Email akun Google belum terverifikasi.',
         });
         return;
       }
