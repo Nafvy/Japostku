@@ -66,6 +66,20 @@ test('validateUserImagePaths rejects paths belonging to other users or traversal
     validateUserImagePaths(['/seed-images/a.jpg'], 'user-1', ['/seed-images/a.jpg']),
     true
   );
+  const supaPrefix = 'https://demo.supabase.co/storage/v1/object/public/post-images/user-1/';
+  assert.equal(
+    validateUserImagePaths([`${supaPrefix}abc.webp`], 'user-1', [], [supaPrefix]),
+    true
+  );
+  assert.equal(
+    validateUserImagePaths(
+      ['https://demo.supabase.co/storage/v1/object/public/post-images/user-2/abc.webp'],
+      'user-1',
+      [],
+      [supaPrefix]
+    ),
+    false
+  );
 });
 
 test('sanitizeNextPath rejects external URLs and protocol-relative URLs', () => {

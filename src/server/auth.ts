@@ -15,6 +15,18 @@ function getSessionSecret(): string {
     cachedSecret = process.env.SESSION_SECRET;
     return cachedSecret;
   }
+  if (process.env.VERCEL) {
+    const seed = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    if (seed) {
+      cachedSecret = crypto
+        .createHmac('sha256', 'japostku-vercel-session-fallback')
+        .update(seed)
+        .digest('hex');
+      return cachedSecret;
+    }
+    cachedSecret = crypto.randomBytes(32).toString('hex');
+    return cachedSecret;
+  }
   const dataDir = path.resolve(process.cwd(), 'data');
   const secretPath = path.join(dataDir, '.session-secret');
   try {

@@ -108,15 +108,16 @@ export const ownerNoticeSchema = z.object({
 export function validateUserImagePaths(
   paths: readonly string[],
   userId: string,
-  existingAllowedPaths: readonly string[] = []
+  existingAllowedPaths: readonly string[] = [],
+  extraOwnPrefixes: readonly string[] = []
 ): boolean {
-  const ownPrefix = `/uploads/${userId}/`;
+  const ownPrefixes = [`/uploads/${userId}/`, ...extraOwnPrefixes.filter(Boolean)];
   const existingSet = new Set(existingAllowedPaths);
   return paths.every((p) => {
     if (p.includes('..') || p.includes('\\')) {
       return false;
     }
-    return p.startsWith(ownPrefix) || existingSet.has(p);
+    return ownPrefixes.some((prefix) => p.startsWith(prefix)) || existingSet.has(p);
   });
 }
 
