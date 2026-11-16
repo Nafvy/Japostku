@@ -2,20 +2,28 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   Crown,
   FileText,
+  FolderPlus,
   ImageOff,
   LayoutDashboard,
   Megaphone,
   MoreHorizontal,
+  PanelLeft,
   Pin,
+  Plus,
   Search,
+  Shield,
+  Tag,
+  Tags,
   Trash2,
   Users,
+  X,
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import { Link, useRouter } from '../context/RouterContext';
 import { useAuth } from '../context/AuthContext';
+import { useCategories } from '../context/CategoriesContext';
 import { useToast } from '../context/ToastContext';
 import { apiFetch } from '../lib/api';
-import { CATEGORY_LABELS, POST_CATEGORIES } from '../lib/categories';
 import { formatDate, formatDateTime, rupiah } from '../lib/format';
 import {
   canAccessAdmin,
@@ -27,6 +35,7 @@ import type {
   AppRole,
   AuditAction,
   AuditLogEntry,
+  CategoryItem,
   PostCategory,
   PrivatePost,
 } from '../lib/types';
@@ -57,17 +66,19 @@ const AUDIT_LABELS: Record<AuditAction, string> = {
   verify_remove: 'mencabut lencana terverifikasi',
   notice_update: 'memperbarui pengumuman beranda',
   board_clear: 'membersihkan seluruh papan postingan',
+  category_add: 'menambah kategori',
+  category_remove: 'menghapus kategori',
 };
 
 export function AdminGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
-  const { fullPath, navigate } = useRouter();
+  const { pathname, fullPath, navigate } = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && !user && pathname !== '/masuk' && pathname !== '/daftar') {
       navigate(`/masuk?next=${encodeURIComponent(fullPath)}`, { replace: true });
     }
-  }, [loading, user, fullPath, navigate]);
+  }, [loading, user, pathname, fullPath, navigate]);
 
   if (loading || !user) {
     return (
@@ -85,53 +96,182 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+const ADMIN_NAV_ITEMS = [
+  { href: '/admin', label: 'Ringkasan', icon: LayoutDashboard },
+  { href: '/admin/pengguna', label: 'Pengguna', icon: Users },
+  { href: '/admin/postingan', label: 'Postingan', icon: FileText },
+  { href: '/admin/kategori', label: 'Kategori', icon: Tags },
+] as const;
+
 function AdminLayout({ children }: { children: React.ReactNode }) {
   const { pathname } = useRouter();
   const { user } = useAuth();
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const navItems = [
-    { href: '/admin', label: 'Ringkasan', icon: LayoutDashboard },
-    { href: '/admin/pengguna', label: 'Pengguna', icon: Users },
-    { href: '/admin/postingan', label: 'Postingan', icon: FileText },
-  ];
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDrawerOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawerOpen]);
+
+  const activeItem =
+    ADMIN_NAV_ITEMS.find((item) =>
+      item.href === '/admin' ? pathname === '/admin' : pathname.startsWith(item.href)
+    ) || ADMIN_NAV_ITEMS[0];
+
+  const renderSidebarLinks = (mobile = false) => (
+    <nav aria-label="Sidebar admin" className="flex flex-col gap-1">
+      {ADMIN_NAV_ITEMS.map((item) => {
+        const active =
+          item.href === '/admin'
+            ? pathname === '/admin'
+            : pathname.startsWith(item.href);
+        const Icon = item.icon;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={() => {
+              if (mobile) setDrawerOpen(false);
+            }}
+            className={cn(
+              'relative inline-flex min-h-10 items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors duration-150',
+              active
+                ? 'text-white'
+                : 'text-zinc-600 hover:bg-zinc-200/60 hover:text-zinc-950'
+            )}
+          >
+            {active && !mobile && (
+              <motion.span
+                layoutId="admin-sidebar-active"
+                transition={{ type: 'spring', stiffness: 460, damping: 36 }}
+                className="absolute inset-0 rounded-lg bg-zinc-950"
+                aria-hidden="true"
+              />
+            )}
+            {active && mobile && (
+              <span
+                className="absolute inset-0 rounded-lg bg-zinc-950"
+                aria-hidden="true"
+              />
+            )}
+            <Icon className="relative z-10 h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="relative z-10">{item.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 md:flex-row md:py-8">
-      <aside className="w-full shrink-0 md:w-52">
-        <div className="mb-3 hidden items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-500 md:flex">
-          {user?.isOwner && <Crown className="h-3.5 w-3.5 text-zinc-950" aria-hidden="true" />}
-          <span>{user?.isOwner ? 'Panel Pemilik' : 'Dashboard Admin'}</span>
+    <div className="flex w-full flex-1 flex-col md:flex-row">
+      {/* Mobile top-left sidebar bar */}
+      <div className="flex items-center justify-between border-b border-zinc-200 bg-zinc-50 px-4 py-2.5 md:hidden">
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            aria-label="Buka sidebar admin"
+            aria-expanded={drawerOpen}
+            className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-950 transition-colors hover:border-zinc-400 cursor-pointer"
+          >
+            <PanelLeft className="h-4 w-4" aria-hidden="true" />
+            <span>Menu</span>
+          </button>
+          <span className="text-sm font-semibold text-zinc-950">{activeItem.label}</span>
         </div>
-        <nav
-          aria-label="Navigasi admin"
-          className="flex gap-1.5 overflow-x-auto pb-1 md:flex-col md:overflow-visible"
-        >
-          {navItems.map((item) => {
-            const active =
-              item.href === '/admin'
-                ? pathname === '/admin'
-                : pathname.startsWith(item.href);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  'inline-flex min-h-10 items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors',
-                  active
-                    ? 'bg-zinc-950 text-white'
-                    : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950'
-                )}
-              >
-                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
+        <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+          {user?.isOwner ? (
+            <Crown className="h-3.5 w-3.5 text-zinc-950" aria-hidden="true" />
+          ) : (
+            <Shield className="h-3.5 w-3.5 text-zinc-700" aria-hidden="true" />
+          )}
+          <span>{user?.isOwner ? 'Pemilik' : 'Admin'}</span>
+        </div>
+      </div>
+
+      {/* Mobile slide-in top-left sidebar drawer */}
+      <AnimatePresence>
+        {drawerOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.16 }}
+            className="fixed inset-0 z-50 flex md:hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Sidebar admin"
+          >
+            <div
+              className="fixed inset-0 bg-black/45 backdrop-blur-[1px]"
+              onClick={() => setDrawerOpen(false)}
+              aria-hidden="true"
+            />
+            <motion.aside
+              initial={{ x: -260 }}
+              animate={{ x: 0 }}
+              exit={{ x: -260 }}
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+              className="relative z-10 flex w-64 max-w-[80vw] flex-col border-r border-zinc-200 bg-white p-4 shadow-2xl"
+            >
+              <div className="mb-4 flex items-center justify-between border-b border-zinc-200 pb-3">
+                <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-700">
+                  {user?.isOwner ? (
+                    <Crown className="h-3.5 w-3.5 text-zinc-950" aria-hidden="true" />
+                  ) : (
+                    <Shield className="h-3.5 w-3.5 text-zinc-950" aria-hidden="true" />
+                  )}
+                  <span>{user?.isOwner ? 'Panel Pemilik' : 'Dashboard Admin'}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(false)}
+                  aria-label="Tutup sidebar"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              {renderSidebarLinks(true)}
+            </motion.aside>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Desktop top-left docked sidebar */}
+      <aside className="hidden w-60 shrink-0 border-r border-zinc-200 bg-zinc-50/75 md:block">
+        <div className="sticky top-16 p-4 sm:p-5">
+          <div className="mb-4 flex items-center gap-2 border-b border-zinc-200 pb-3 text-xs font-semibold uppercase tracking-wider text-zinc-600">
+            {user?.isOwner ? (
+              <Crown className="h-3.5 w-3.5 text-zinc-950" aria-hidden="true" />
+            ) : (
+              <Shield className="h-3.5 w-3.5 text-zinc-950" aria-hidden="true" />
+            )}
+            <span>{user?.isOwner ? 'Panel Pemilik' : 'Dashboard Admin'}</span>
+          </div>
+          {renderSidebarLinks(false)}
+        </div>
       </aside>
 
-      <main className="min-w-0 flex-1">{children}</main>
+      <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 md:py-8">
+        <motion.div
+          key={pathname}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          className="mx-auto w-full max-w-5xl"
+        >
+          {children}
+        </motion.div>
+      </main>
     </div>
   );
 }
@@ -217,25 +357,10 @@ export function AdminOverviewPage() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-zinc-950">Ringkasan</h1>
-            {user?.isOwner && <VerifiedBadge isOwner showText />}
-          </div>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/admin/pengguna"
-              className="inline-flex min-h-10 items-center rounded-lg border border-zinc-200 bg-white px-3.5 py-2 text-sm font-medium text-zinc-950 transition-colors hover:border-zinc-400 hover:bg-zinc-50"
-            >
-              Kelola pengguna
-            </Link>
-            <Link
-              href="/admin/postingan"
-              className="inline-flex min-h-10 items-center rounded-lg border border-zinc-200 bg-white px-3.5 py-2 text-sm font-medium text-zinc-950 transition-colors hover:border-zinc-400 hover:bg-zinc-50"
-            >
-              Kelola postingan
-            </Link>
-          </div>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <LayoutDashboard className="h-5 w-5 text-zinc-950" aria-hidden="true" />
+          <h1 className="text-2xl font-bold text-zinc-950">Ringkasan</h1>
+          {user?.isOwner && <VerifiedBadge isOwner showText />}
         </div>
 
         {loading && (
@@ -945,6 +1070,7 @@ interface AdminPostsResponse {
 
 export function AdminPostsPage() {
   const { user: actor, refreshUser } = useAuth();
+  const { categories, getLabel } = useCategories();
   const { search } = useRouter();
   const { showToast } = useToast();
   const urlQ = new URLSearchParams(search).get('q') || '';
@@ -1107,9 +1233,9 @@ export function AdminPostsPage() {
               }}
             >
               <option value="">Semua kategori</option>
-              {POST_CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>
-                  {CATEGORY_LABELS[cat]}
+              {categories.map((cat) => (
+                <option key={cat.slug} value={cat.slug}>
+                  {cat.label}
                 </option>
               ))}
             </Select>
@@ -1176,7 +1302,7 @@ export function AdminPostsPage() {
                                 )}
                               </div>
                               <p className="text-xs text-zinc-500">
-                                {CATEGORY_LABELS[post.category]}
+                                {getLabel(post.category)}
                               </p>
                             </div>
                           </div>
@@ -1320,3 +1446,219 @@ export function AdminPostsPage() {
     </AdminLayout>
   );
 }
+
+interface AdminCategoryRow extends CategoryItem {
+  postCount: number;
+}
+
+export function AdminCategoriesPage() {
+  const { refreshUser } = useAuth();
+  const { refreshCategories } = useCategories();
+  const { showToast } = useToast();
+
+  const [items, setItems] = useState<AdminCategoryRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [newLabel, setNewLabel] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  const [deleteTarget, setDeleteTarget] = useState<AdminCategoryRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const loadCategories = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const res = await apiFetch<{ items: AdminCategoryRow[] }>('/api/admin/categories');
+    if (!res.ok) {
+      if (res.banned) {
+        await refreshUser();
+        return;
+      }
+      setError(res.error);
+      setLoading(false);
+      return;
+    }
+    setItems(res.data.items);
+    setLoading(false);
+  }, [refreshUser]);
+
+  useEffect(() => {
+    void loadCategories();
+  }, [loadCategories]);
+
+  const handleAddCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newLabel.trim();
+    if (trimmed.length < 2) {
+      setFormError('Nama kategori minimal 2 karakter.');
+      return;
+    }
+    setFormError(null);
+    setCreating(true);
+    const res = await apiFetch<CategoryItem>('/api/admin/categories', {
+      method: 'POST',
+      body: JSON.stringify({ label: trimmed }),
+    });
+    setCreating(false);
+    if (!res.ok) {
+      if (res.banned) {
+        await refreshUser();
+        return;
+      }
+      setFormError(res.fieldErrors?.label || res.error);
+      return;
+    }
+    setNewLabel('');
+    showToast(`Kategori "${res.data.label}" berhasil ditambahkan.`, 'success');
+    await Promise.all([loadCategories(), refreshCategories()]);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const res = await apiFetch<null>(
+      `/api/admin/categories/${encodeURIComponent(deleteTarget.slug)}`,
+      { method: 'DELETE' }
+    );
+    setDeleting(false);
+    if (!res.ok) {
+      if (res.banned) {
+        await refreshUser();
+        return;
+      }
+      showToast(res.error, 'error');
+      return;
+    }
+    showToast(`Kategori "${deleteTarget.label}" dihapus.`, 'success');
+    setDeleteTarget(null);
+    await Promise.all([loadCategories(), refreshCategories()]);
+  };
+
+  return (
+    <AdminLayout>
+      <div className="space-y-6">
+        <div className="flex items-center gap-2.5">
+          <Tags className="h-5 w-5 text-zinc-950" aria-hidden="true" />
+          <h1 className="text-2xl font-bold text-zinc-950">Kelola kategori</h1>
+        </div>
+
+        <section
+          aria-label="Tambah kategori baru"
+          className="rounded-xl border border-zinc-200 bg-white p-5"
+        >
+          <form onSubmit={handleAddCategory} noValidate className="space-y-3">
+            <Label htmlFor="new-category-label" className="inline-flex items-center gap-1.5">
+              <FolderPlus className="h-4 w-4 text-zinc-600" aria-hidden="true" />
+              <span>Tambah kategori postingan</span>
+            </Label>
+            <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start">
+              <div className="flex-1 space-y-1.5">
+                <Input
+                  id="new-category-label"
+                  value={newLabel}
+                  maxLength={32}
+                  onChange={(e) => {
+                    setNewLabel(e.target.value);
+                    if (formError) setFormError(null);
+                  }}
+                  placeholder="Contoh: Alat Musik"
+                  aria-invalid={Boolean(formError)}
+                />
+                {formError ? (
+                  <p className="text-xs font-medium text-zinc-950">{formError}</p>
+                ) : (
+                  <p className="text-xs text-zinc-500">
+                    Kategori baru otomatis muncul di filter beranda dan formulir pasang postingan.
+                  </p>
+                )}
+              </div>
+              <Button type="submit" disabled={creating} className="sm:shrink-0">
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                <span>{creating ? 'Menambahkan...' : 'Tambah kategori'}</span>
+              </Button>
+            </div>
+          </form>
+        </section>
+
+        {loading && <Skeleton className="h-64 w-full" />}
+
+        {!loading && error && (
+          <EmptyState
+            message={error}
+            actionLabel="Coba lagi"
+            onAction={() => void loadCategories()}
+          />
+        )}
+
+        {!loading && !error && items.length === 0 && (
+          <EmptyState message="Belum ada kategori yang tersimpan." />
+        )}
+
+        {!loading && !error && items.length > 0 && (
+          <section aria-label="Daftar kategori aktif" className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+            <table className="w-full min-w-[520px] border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-zinc-200 bg-zinc-50 text-xs font-semibold text-zinc-600">
+                  <th className="px-4 py-3">Nama Kategori</th>
+                  <th className="px-4 py-3">Kode</th>
+                  <th className="px-4 py-3 text-right">Postingan</th>
+                  <th className="px-4 py-3 text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-200">
+                {items.map((cat) => (
+                  <tr key={cat.slug} className="transition-colors hover:bg-zinc-50/70">
+                    <td className="px-4 py-3 font-medium text-zinc-950">
+                      <div className="inline-flex items-center gap-2">
+                        <Tag className="h-4 w-4 text-zinc-500" aria-hidden="true" />
+                        <span>{cat.label}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-zinc-500">
+                      {cat.slug}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono tabular-nums text-zinc-700">
+                      {cat.postCount}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={items.length <= 1 || deleting}
+                        onClick={() => setDeleteTarget(cat)}
+                        aria-label={`Hapus kategori ${cat.label}`}
+                        className="border-zinc-200 hover:border-zinc-950"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span>Hapus</span>
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
+
+        <ConfirmDialog
+          open={Boolean(deleteTarget)}
+          title="Hapus kategori ini?"
+          description={
+            deleteTarget
+              ? `Kategori "${deleteTarget.label}" akan dihapus dari daftar pilihan dan filter baru. Postingan lama yang memakai kategori ini tetap aman ditampilkan.`
+              : ''
+          }
+          confirmLabel="Hapus kategori"
+          destructive
+          busy={deleting}
+          onConfirm={() => void handleConfirmDelete()}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      </div>
+    </AdminLayout>
+  );
+}
+

@@ -50,6 +50,24 @@ insert into public.settings (id, owner_notice, next_post_seq)
 values ('board', '', 1)
 on conflict (id) do nothing;
 
+create table if not exists public.categories (
+  slug text primary key,
+  label text not null,
+  created_at timestamptz not null default now()
+);
+
+insert into public.categories (slug, label)
+values
+  ('elektronik', 'Elektronik'),
+  ('kendaraan', 'Kendaraan'),
+  ('properti', 'Properti'),
+  ('fashion', 'Fashion'),
+  ('rumah_tangga', 'Rumah Tangga'),
+  ('hobi', 'Hobi'),
+  ('jasa', 'Jasa'),
+  ('lainnya', 'Lainnya')
+on conflict (slug) do nothing;
+
 create table if not exists public.audit_logs (
   id text primary key,
   actor_id text not null,
@@ -69,14 +87,21 @@ create index if not exists idx_audit_logs_created
 alter table public.users enable row level security;
 alter table public.posts enable row level security;
 alter table public.settings enable row level security;
+alter table public.categories enable row level security;
 alter table public.audit_logs enable row level security;
 
--- Kebijakan baca publik opsional untuk postingan aktif
+-- Kebijakan baca publik opsional untuk postingan aktif dan kategori
 drop policy if exists "Publik dapat melihat postingan aktif" on public.posts;
 create policy "Publik dapat melihat postingan aktif"
   on public.posts
   for select
   using (status = 'active');
+
+drop policy if exists "Publik dapat melihat kategori" on public.categories;
+create policy "Publik dapat melihat kategori"
+  on public.categories
+  for select
+  using (true);
 
 -- Catatan:
 -- 1. Buat Storage bucket bernama "post-images" di menu Storage Supabase lalu aktifkan Public bucket.

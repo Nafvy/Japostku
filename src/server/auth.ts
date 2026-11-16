@@ -15,7 +15,7 @@ function getSessionSecret(): string {
     cachedSecret = process.env.SESSION_SECRET;
     return cachedSecret;
   }
-  if (process.env.VERCEL) {
+  if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
     const seed = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
     if (seed) {
       cachedSecret = crypto
@@ -24,8 +24,10 @@ function getSessionSecret(): string {
         .digest('hex');
       return cachedSecret;
     }
-    cachedSecret = crypto.randomBytes(32).toString('hex');
-    return cachedSecret;
+    if (process.env.VERCEL) {
+      cachedSecret = crypto.randomBytes(32).toString('hex');
+      return cachedSecret;
+    }
   }
   const dataDir = path.resolve(process.cwd(), 'data');
   const secretPath = path.join(dataDir, '.session-secret');

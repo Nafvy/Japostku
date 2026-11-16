@@ -11,11 +11,12 @@ import {
   Trash2,
   User,
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { Link, useRouter } from '../context/RouterContext';
 import { useAuth } from '../context/AuthContext';
+import { useCategories } from '../context/CategoriesContext';
 import { useToast } from '../context/ToastContext';
 import { apiFetch } from '../lib/api';
-import { CATEGORY_LABELS } from '../lib/categories';
 import {
   removePostFromFirestore,
   syncPostToFirestore,
@@ -39,13 +40,13 @@ import { NotFoundPage } from './NotFoundPage';
 
 export function AccountGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
-  const { fullPath, navigate } = useRouter();
+  const { pathname, fullPath, navigate } = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && !user && pathname !== '/masuk' && pathname !== '/daftar') {
       navigate(`/masuk?next=${encodeURIComponent(fullPath)}`, { replace: true });
     }
-  }, [loading, user, fullPath, navigate]);
+  }, [loading, user, pathname, fullPath, navigate]);
 
   if (loading || !user) {
     return (
@@ -62,6 +63,7 @@ export function AccountGuard({ children }: { children: React.ReactNode }) {
 export function MyPostsPage() {
   const { navigate } = useRouter();
   const { user, refreshUser } = useAuth();
+  const { getLabel } = useCategories();
   const { showToast } = useToast();
 
   const [posts, setPosts] = useState<PublicPost[]>([]);
@@ -195,14 +197,21 @@ export function MyPostsPage() {
           )}
 
           {!loading && !error && posts.length > 0 && (
-            <div className="divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white">
-              {posts.map((post) => {
+            <div className="divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white overflow-hidden">
+              {posts.map((post, idx) => {
                 const isSold = post.status === 'sold';
                 const isBusy = busyId === post.id;
                 return (
-                  <div
+                  <motion.div
                     key={post.id}
-                    className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      duration: 0.2,
+                      delay: Math.min(idx * 0.03, 0.15),
+                      ease: [0.16, 1, 0.3, 1],
+                    }}
+                    className="flex flex-col gap-4 p-4 transition-colors hover:bg-zinc-50/60 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="flex items-start gap-3.5 min-w-0">
                       <Link
@@ -253,7 +262,7 @@ export function MyPostsPage() {
                             {isSold ? 'Terjual' : 'Aktif'}
                           </span>
                           <span aria-hidden="true">·</span>
-                          <span>{CATEGORY_LABELS[post.category]}</span>
+                          <span>{getLabel(post.category)}</span>
                           <span aria-hidden="true">·</span>
                           <span>{formatDate(post.createdAt)}</span>
                         </div>
@@ -291,7 +300,7 @@ export function MyPostsPage() {
                         <span>Hapus</span>
                       </Button>
                     </div>
-                  </div>
+                  </motion.div>
                 );
               })}
             </div>
@@ -319,6 +328,7 @@ export function MyPostsPage() {
 
 export function NewPostPage() {
   const { user, refreshUser } = useAuth();
+  const { categories } = useCategories();
   const { navigate } = useRouter();
   const { showToast } = useToast();
 
@@ -371,7 +381,7 @@ export function NewPostPage() {
           <PostForm
             initialValues={{
               title: '',
-              category: 'elektronik',
+              category: categories[0]?.slug || 'elektronik',
               priceIdr: '',
               description: '',
               images: [],

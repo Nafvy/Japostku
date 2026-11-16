@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  categoryInputSchema,
   postInputSchema,
   registerSchema,
   sanitizeNextPath,
   validateUserImagePaths,
 } from './schemas';
+import { getCategoryLabel, slugifyCategory } from './categories';
 
 test('registerSchema enforces display name and 8-char password', () => {
   assert.equal(
@@ -88,4 +90,15 @@ test('sanitizeNextPath rejects external URLs and protocol-relative URLs', () => 
   assert.equal(sanitizeNextPath('https://evil.com'), '/akun/postingan');
   assert.equal(sanitizeNextPath('//evil.com'), '/akun/postingan');
   assert.equal(sanitizeNextPath(undefined), '/akun/postingan');
+});
+
+test('categoryInputSchema, slugifyCategory, and getCategoryLabel work cleanly', () => {
+  assert.equal(categoryInputSchema.safeParse({ label: 'Alat Musik' }).success, true);
+  assert.equal(categoryInputSchema.safeParse({ label: 'A' }).success, false);
+  assert.equal(slugifyCategory('Alat Musik & Studio!'), 'alat_musik_studio');
+  assert.equal(
+    getCategoryLabel('alat_musik', [{ slug: 'alat_musik', label: 'Alat Musik' }]),
+    'Alat Musik'
+  );
+  assert.equal(getCategoryLabel('buku_bekas'), 'Buku Bekas');
 });

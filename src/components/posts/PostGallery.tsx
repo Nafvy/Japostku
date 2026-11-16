@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, ImageOff } from 'lucide-react';
+import { motion } from 'motion/react';
 import { cn } from '../../lib/utils';
 
 interface PostGalleryProps {
@@ -69,7 +70,7 @@ export function PostGallery({ images, title }: PostGalleryProps) {
               onClick={() => scrollTo(activeIndex - 1)}
               disabled={activeIndex === 0}
               aria-label="Foto sebelumnya"
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white/95 text-zinc-950 shadow-sm transition-transform hover:scale-105 disabled:opacity-35 cursor-pointer"
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white/95 text-zinc-950 shadow-sm transition-all duration-150 hover:scale-105 active:scale-95 disabled:opacity-35 cursor-pointer"
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
@@ -78,7 +79,7 @@ export function PostGallery({ images, title }: PostGalleryProps) {
               onClick={() => scrollTo(activeIndex + 1)}
               disabled={activeIndex === images.length - 1}
               aria-label="Foto berikutnya"
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white/95 text-zinc-950 shadow-sm transition-transform hover:scale-105 disabled:opacity-35 cursor-pointer"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white/95 text-zinc-950 shadow-sm transition-all duration-150 hover:scale-105 active:scale-95 disabled:opacity-35 cursor-pointer"
             >
               <ChevronRight className="h-5 w-5" />
             </button>
@@ -99,10 +100,10 @@ export function PostGallery({ images, title }: PostGalleryProps) {
               aria-label={`Lihat foto ${idx + 1}`}
               aria-current={idx === activeIndex ? 'true' : undefined}
               className={cn(
-                'relative aspect-[4/3] w-20 shrink-0 overflow-hidden rounded-lg border cursor-pointer transition-all',
+                'relative aspect-[4/3] w-20 shrink-0 overflow-hidden rounded-lg border cursor-pointer transition-all duration-200',
                 idx === activeIndex
-                  ? 'border-zinc-950 ring-2 ring-zinc-950/20'
-                  : 'border-zinc-200 opacity-70 hover:opacity-100'
+                  ? 'border-zinc-950 opacity-100'
+                  : 'border-zinc-200 opacity-65 hover:opacity-100'
               )}
             >
               <img
@@ -111,6 +112,14 @@ export function PostGallery({ images, title }: PostGalleryProps) {
                 referrerPolicy="no-referrer"
                 className="h-full w-full object-cover"
               />
+              {idx === activeIndex && (
+                <motion.span
+                  layoutId="gallery-thumb-active"
+                  transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                  className="pointer-events-none absolute inset-0 rounded-lg ring-2 ring-inset ring-zinc-950"
+                  aria-hidden="true"
+                />
+              )}
             </button>
           ))}
         </div>

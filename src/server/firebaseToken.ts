@@ -15,11 +15,29 @@ const GOOGLE_CERTS_URL =
 let cachedCerts: { certs: Record<string, string>; expiresAtMs: number } | null = null;
 
 function readFirebaseConfigField(field: 'apiKey' | 'projectId'): string {
-  const candidates = [
+  const candidates: Array<string | URL> = [
     path.resolve(process.cwd(), 'firebase-applet-config.json'),
-    new URL('../firebase-applet-config.json', import.meta.url),
-    new URL('../../firebase-applet-config.json', import.meta.url),
   ];
+  try {
+    if (typeof import.meta !== 'undefined' && typeof import.meta.url === 'string' && import.meta.url) {
+      candidates.push(
+        new URL('../firebase-applet-config.json', import.meta.url),
+        new URL('../../firebase-applet-config.json', import.meta.url)
+      );
+    }
+  } catch {
+    // Ignore import.meta.url errors in CommonJS bundles
+  }
+  try {
+    if (typeof __dirname === 'string' && __dirname) {
+      candidates.push(
+        path.resolve(__dirname, '../firebase-applet-config.json'),
+        path.resolve(__dirname, '../../firebase-applet-config.json')
+      );
+    }
+  } catch {
+    // Ignore __dirname in pure ESM runtimes
+  }
   for (const candidate of candidates) {
     try {
       if (fs.existsSync(candidate)) {

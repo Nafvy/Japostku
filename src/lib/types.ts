@@ -2,15 +2,13 @@ export type AppRole = 'admin' | 'moderator';
 
 export type PostStatus = 'active' | 'sold';
 
-export type PostCategory =
-  | 'elektronik'
-  | 'kendaraan'
-  | 'properti'
-  | 'fashion'
-  | 'rumah_tangga'
-  | 'hobi'
-  | 'jasa'
-  | 'lainnya';
+export type PostCategory = string;
+
+export interface CategoryItem {
+  slug: string;
+  label: string;
+  createdAt?: string;
+}
 
 export type SortOrder = 'terbaru' | 'termurah' | 'termahal';
 
@@ -76,14 +74,16 @@ export type AuditAction =
   | 'verify_add'
   | 'verify_remove'
   | 'notice_update'
-  | 'board_clear';
+  | 'board_clear'
+  | 'category_add'
+  | 'category_remove';
 
 export interface AuditLogEntry {
   id: string;
   actorId: string;
   actorName: string;
   action: AuditAction;
-  targetType: 'user' | 'post' | 'setting';
+  targetType: 'user' | 'post' | 'setting' | 'category';
   targetId: string;
   targetLabel: string;
   reason: string | null;

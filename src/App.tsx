@@ -1,6 +1,7 @@
 import React from 'react';
-import { MotionConfig } from 'motion/react';
+import { MotionConfig, motion } from 'motion/react';
 import { AuthProvider } from './context/AuthContext';
+import { CategoriesProvider } from './context/CategoriesContext';
 import { RouterProvider, useRouter } from './context/RouterContext';
 import { ToastProvider } from './context/ToastContext';
 import { SiteHeader } from './components/layout/SiteHeader';
@@ -17,6 +18,7 @@ import {
   ProfilePage,
 } from './pages/AccountPages';
 import {
+  AdminCategoriesPage,
   AdminGuard,
   AdminOverviewPage,
   AdminPostsPage,
@@ -24,10 +26,7 @@ import {
 } from './pages/AdminPages';
 import { NotFoundPage } from './pages/NotFoundPage';
 
-function AppRoutes() {
-  const { pathname } = useRouter();
-  const cleanPath = pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
-
+function resolveRouteElement(cleanPath: string): React.ReactNode {
   if (cleanPath === '/') {
     return <HomePage />;
   }
@@ -81,8 +80,34 @@ function AppRoutes() {
       </AdminGuard>
     );
   }
+  if (cleanPath === '/admin/kategori') {
+    return (
+      <AdminGuard>
+        <AdminCategoriesPage />
+      </AdminGuard>
+    );
+  }
 
   return <NotFoundPage />;
+}
+
+function AppRoutes() {
+  const { pathname } = useRouter();
+  const cleanPath =
+    pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+  const routeKey = cleanPath.startsWith('/admin') ? '/admin' : cleanPath;
+
+  return (
+    <motion.div
+      key={routeKey}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+      className="flex flex-1 flex-col"
+    >
+      {resolveRouteElement(cleanPath)}
+    </motion.div>
+  );
 }
 
 export default function App() {
@@ -90,14 +115,16 @@ export default function App() {
     <MotionConfig reducedMotion="user">
       <RouterProvider>
         <AuthProvider>
-          <ToastProvider>
-            <div className="flex min-h-dvh flex-col bg-white text-zinc-950">
-              <SiteHeader />
-              <AppRoutes />
-              <SiteFooter />
-              <FloatingCreateButton />
-            </div>
-          </ToastProvider>
+          <CategoriesProvider>
+            <ToastProvider>
+              <div className="flex min-h-dvh flex-col bg-white text-zinc-950">
+                <SiteHeader />
+                <AppRoutes />
+                <SiteFooter />
+                <FloatingCreateButton />
+              </div>
+            </ToastProvider>
+          </CategoriesProvider>
         </AuthProvider>
       </RouterProvider>
     </MotionConfig>

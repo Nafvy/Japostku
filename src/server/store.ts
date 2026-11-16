@@ -5,11 +5,13 @@ import type {
   AppRole,
   AuditAction,
   AuditLogEntry,
+  CategoryItem,
   PostCategory,
   PostStatus,
   PublicPost,
   UserProfile,
 } from '../lib/types';
+import { DEFAULT_CATEGORIES } from '../lib/categories';
 import { isOwnerEmail, OWNER_EMAIL } from '../lib/permissions';
 import { hashPassword } from './auth';
 
@@ -49,6 +51,7 @@ export interface DatabaseState {
   ownerNotice: string;
   users: StoredUser[];
   posts: StoredPost[];
+  categories: CategoryItem[];
   auditLogs: AuditLogEntry[];
 }
 
@@ -83,6 +86,7 @@ function createSeedState(): DatabaseState {
     ownerNotice: '',
     users,
     posts: [],
+    categories: DEFAULT_CATEGORIES.map((c) => ({ ...c, createdAt: nowIso })),
     auditLogs: [],
   };
 }
@@ -95,6 +99,7 @@ function ensureDirs(): void {
 }
 
 function normalizeDb(rawDb: DatabaseState): DatabaseState {
+  const nowIso = new Date().toISOString();
   const ownerNotice = typeof rawDb.ownerNotice === 'string' ? rawDb.ownerNotice : '';
   const users = Array.isArray(rawDb.users)
     ? rawDb.users.map((u) => {
@@ -118,6 +123,16 @@ function normalizeDb(rawDb: DatabaseState): DatabaseState {
         isPinned: Boolean(p.isPinned),
       }))
     : [];
+  const categories =
+    Array.isArray(rawDb.categories) && rawDb.categories.length > 0
+      ? rawDb.categories
+          .filter((c) => c && typeof c.slug === 'string' && typeof c.label === 'string')
+          .map((c) => ({
+            slug: c.slug,
+            label: c.label,
+            createdAt: c.createdAt || nowIso,
+          }))
+      : DEFAULT_CATEGORIES.map((c) => ({ ...c, createdAt: nowIso }));
   const auditLogs = Array.isArray(rawDb.auditLogs) ? rawDb.auditLogs : [];
 
   return {
@@ -125,6 +140,7 @@ function normalizeDb(rawDb: DatabaseState): DatabaseState {
     ownerNotice,
     users,
     posts,
+    categories,
     auditLogs,
   };
 }
@@ -214,7 +230,7 @@ export function addAuditLog(
     actorId: string;
     actorName: string;
     action: AuditAction;
-    targetType: 'user' | 'post' | 'setting';
+    targetType: 'user' | 'post' | 'setting' | 'category';
     targetId: string;
     targetLabel: string;
     reason: string | null;

@@ -2,7 +2,15 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { AppRole, AuditAction, AuditLogEntry, PostCategory, PostStatus } from '../lib/types';
+import type {
+  AppRole,
+  AuditAction,
+  AuditLogEntry,
+  CategoryItem,
+  PostCategory,
+  PostStatus,
+} from '../lib/types';
+import { DEFAULT_CATEGORIES, slugifyCategory } from '../lib/categories';
 import { isOwnerEmail, OWNER_EMAIL } from '../lib/permissions';
 import { hashPassword } from './auth';
 import {
@@ -46,12 +54,18 @@ interface SupabasePostRow {
   updated_at: string;
 }
 
+interface SupabaseCategoryRow {
+  slug: string;
+  label: string;
+  created_at: string;
+}
+
 interface SupabaseAuditRow {
   id: string;
   actor_id: string;
   actor_name: string;
   action: AuditAction;
-  target_type: 'user' | 'post' | 'setting';
+  target_type: 'user' | 'post' | 'setting' | 'category';
   target_id: string;
   target_label: string;
   reason: string | null;
@@ -71,7 +85,7 @@ function getBucketName(): string {
 
 function getSupabase(): SupabaseClient {
   if (cachedSupabase) return cachedSupabase;
-  const url = process.env.SUPABASE_URL?.trim() || '';
+  const url = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || '';
   cachedSupabase = createClient(url, key, {
     auth: {
@@ -140,7 +154,7 @@ export async function ensureInitialized(): Promise<void> {
   if (!isSupabaseEnabled()) {
     if (process.env.VERCEL) {
       throw new Error(
-        'Konfigurasi Supabase belum lengkap. Pastikan SUPABASE_URL dan SUPABASE_SERVICE_ROLE_KEY sudah diisi di Environment Variables Vercel lalu Redeploy.'
+        'Konfigurasi Supabase belum lengkap. Pastikan SUPABASE_URL dan SUPABASE_SERVICE_ROLE_KEY sudah diisi di Secrets / Environment Variables.'
       );
     }
     loadDb();
@@ -194,6 +208,23 @@ export async function ensureInitialized(): Promise<void> {
           created_at: new Date().toISOString(),
         });
         if (insertOwnerErr) throw new Error(insertOwnerErr.message);
+      }
+
+      const bucket = getBucketName();
+      try {
+        const { data: bucketData } = await sb.storage.getBucket(bucket);
+        if (!bucketData) {
+          const { error: createBucketErr } = await sb.storage.createBucket(bucket, {
+            public: true,
+            fileSizeLimit: 5 * 1024 * 1024,
+            allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+          });
+          if (createBucketErr && !createBucketErr.message.toLowerCase().includes('already exists')) {
+            console.warn(`Peringatan Storage bucket "${bucket}":`, createBucketErr.message);
+          }
+        }
+      } catch {
+        // Bucket checks are best-effort; upload errors report clearly if storage fails
       }
     })().catch((err) => {
       seededPromise = null;
@@ -579,11 +610,177 @@ export async function setOwnerNotice(notice: string): Promise<string> {
   return notice;
 }
 
+function isMissingCategoriesTableError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const msg = error.message || '';
+  return (
+    error.code === '42P01' ||
+    error.code === 'PGRST205' ||
+    msg.includes('Could not find the table') ||
+    msg.includes('does not exist')
+  );
+}
+
+export async function listCategories(): Promise<CategoryItem[]> {
+  await ensureInitialized();
+  if (!isSupabaseEnabled()) {
+    return [...loadDb().categories];
+  }
+
+  const sb = getSupabase();
+  const { data, error } = await sb
+    .from('categories')
+    .select('slug, label, created_at')
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    if (isMissingCategoriesTableError(error)) {
+      return DEFAULT_CATEGORIES.map((c) => ({ ...c }));
+    }
+    throw new Error(error.message);
+  }
+
+  const rows = (data || []) as SupabaseCategoryRow[];
+  if (rows.length === 0) {
+    const seedRows = DEFAULT_CATEGORIES.map((c, idx) => ({
+      slug: c.slug,
+      label: c.label,
+      created_at: new Date(Date.now() + idx * 1000).toISOString(),
+    }));
+    const { error: upsertErr } = await sb
+      .from('categories')
+      .upsert(seedRows, { onConflict: 'slug' });
+    if (upsertErr && !isMissingCategoriesTableError(upsertErr)) {
+      throw new Error(upsertErr.message);
+    }
+    return DEFAULT_CATEGORIES.map((c) => ({ ...c }));
+  }
+
+  return rows.map((r) => ({
+    slug: r.slug,
+    label: r.label,
+    createdAt: r.created_at,
+  }));
+}
+
+export async function createCategoryRecord(label: string): Promise<CategoryItem> {
+  await ensureInitialized();
+  const trimmedLabel = label.trim();
+  const slug = slugifyCategory(trimmedLabel);
+  if (!slug || slug.length < 2) {
+    throw new Error('CATEGORY_INVALID_SLUG');
+  }
+
+  if (!isSupabaseEnabled()) {
+    const db = loadDb();
+    const duplicate = db.categories.find(
+      (c) => c.slug === slug || c.label.toLowerCase() === trimmedLabel.toLowerCase()
+    );
+    if (duplicate) {
+      throw new Error('CATEGORY_DUPLICATE');
+    }
+    const created: CategoryItem = {
+      slug,
+      label: trimmedLabel,
+      createdAt: new Date().toISOString(),
+    };
+    db.categories.push(created);
+    saveDb(db);
+    return created;
+  }
+
+  const sb = getSupabase();
+  const { data: existingRows, error: listErr } = await sb
+    .from('categories')
+    .select('slug, label, created_at');
+
+  if (listErr) {
+    if (isMissingCategoriesTableError(listErr)) {
+      throw new Error('Tabel categories di Supabase belum dibuat. Jalankan skrip supabase/schema.sql terbaru di SQL Editor Supabase.');
+    }
+    throw new Error(listErr.message);
+  }
+
+  const rows = (existingRows || []) as SupabaseCategoryRow[];
+  const duplicate = rows.find(
+    (c) => c.slug === slug || c.label.toLowerCase() === trimmedLabel.toLowerCase()
+  );
+  if (duplicate) {
+    throw new Error('CATEGORY_DUPLICATE');
+  }
+
+  const createdAt = new Date().toISOString();
+  const { data, error } = await sb
+    .from('categories')
+    .insert({ slug, label: trimmedLabel, created_at: createdAt })
+    .select('slug, label, created_at')
+    .single();
+
+  if (error) {
+    if (error.code === '23505') {
+      throw new Error('CATEGORY_DUPLICATE');
+    }
+    throw new Error(error.message);
+  }
+
+  const row = data as SupabaseCategoryRow;
+  return {
+    slug: row.slug,
+    label: row.label,
+    createdAt: row.created_at,
+  };
+}
+
+export async function deleteCategoryRecord(slug: string): Promise<CategoryItem | null> {
+  await ensureInitialized();
+  const cleanSlug = slug.trim();
+
+  if (!isSupabaseEnabled()) {
+    const db = loadDb();
+    const idx = db.categories.findIndex((c) => c.slug === cleanSlug);
+    if (idx === -1) return null;
+    if (db.categories.length <= 1) {
+      throw new Error('CATEGORY_MIN_ONE');
+    }
+    const [removed] = db.categories.splice(idx, 1);
+    saveDb(db);
+    return removed;
+  }
+
+  const sb = getSupabase();
+  const { data: existingRows, error: listErr } = await sb
+    .from('categories')
+    .select('slug, label, created_at');
+
+  if (listErr) {
+    if (isMissingCategoriesTableError(listErr)) {
+      throw new Error('Tabel categories di Supabase belum dibuat. Jalankan skrip supabase/schema.sql terbaru di SQL Editor Supabase.');
+    }
+    throw new Error(listErr.message);
+  }
+
+  const rows = (existingRows || []) as SupabaseCategoryRow[];
+  const target = rows.find((c) => c.slug === cleanSlug);
+  if (!target) return null;
+  if (rows.length <= 1) {
+    throw new Error('CATEGORY_MIN_ONE');
+  }
+
+  const { error: delErr } = await sb.from('categories').delete().eq('slug', cleanSlug);
+  if (delErr) throw new Error(delErr.message);
+
+  return {
+    slug: target.slug,
+    label: target.label,
+    createdAt: target.created_at,
+  };
+}
+
 export async function recordAuditLog(entry: {
   actorId: string;
   actorName: string;
   action: AuditAction;
-  targetType: 'user' | 'post' | 'setting';
+  targetType: 'user' | 'post' | 'setting' | 'category';
   targetId: string;
   targetLabel: string;
   reason: string | null;

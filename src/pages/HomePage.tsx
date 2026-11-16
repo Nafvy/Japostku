@@ -25,9 +25,9 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
+import { useCategories } from '../context/CategoriesContext';
 import { Link, useRouter } from '../context/RouterContext';
 import { apiFetch } from '../lib/api';
-import { CATEGORY_LABELS, POST_CATEGORIES } from '../lib/categories';
 import type { PostCategory, PublicPost, SortOrder } from '../lib/types';
 import { cn } from '../lib/utils';
 import { PostCard } from '../components/posts/PostCard';
@@ -100,6 +100,7 @@ const FAQ_ITEMS = [
 
 export function HomePage() {
   const { user } = useAuth();
+  const { categories } = useCategories();
   const { search, navigate } = useRouter();
   const params = new URLSearchParams(search);
   const urlQ = params.get('q') || '';
@@ -324,33 +325,49 @@ export function HomePage() {
             onClick={() => updateUrlParams({ kategori: '', hal: 1 })}
             aria-pressed={urlCategory === ''}
             className={cn(
-              'inline-flex min-h-10 items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium whitespace-nowrap shrink-0 transition-all duration-150 cursor-pointer',
+              'relative inline-flex min-h-10 items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium whitespace-nowrap shrink-0 transition-colors duration-150 cursor-pointer',
               urlCategory === ''
-                ? 'border-zinc-950 bg-zinc-950 text-white shadow-xs'
+                ? 'border-zinc-950 text-white'
                 : 'border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400 hover:text-zinc-950'
             )}
           >
-            <LayoutGrid className="h-4 w-4" aria-hidden="true" />
-            <span>Semua</span>
+            {urlCategory === '' && (
+              <motion.span
+                layoutId="home-category-active"
+                transition={{ type: 'spring', stiffness: 460, damping: 36 }}
+                className="absolute inset-0 rounded-[7px] bg-zinc-950"
+                aria-hidden="true"
+              />
+            )}
+            <LayoutGrid className="relative z-10 h-4 w-4" aria-hidden="true" />
+            <span className="relative z-10">Semua</span>
           </button>
-          {POST_CATEGORIES.map((cat) => {
-            const active = urlCategory === cat;
-            const Icon = CATEGORY_ICONS[cat];
+          {categories.map((cat) => {
+            const active = urlCategory === cat.slug;
+            const Icon = CATEGORY_ICONS[cat.slug] || Tag;
             return (
               <button
-                key={cat}
+                key={cat.slug}
                 type="button"
-                onClick={() => updateUrlParams({ kategori: cat, hal: 1 })}
+                onClick={() => updateUrlParams({ kategori: cat.slug, hal: 1 })}
                 aria-pressed={active}
                 className={cn(
-                  'inline-flex min-h-10 items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium whitespace-nowrap shrink-0 transition-all duration-150 cursor-pointer',
+                  'relative inline-flex min-h-10 items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium whitespace-nowrap shrink-0 transition-colors duration-150 cursor-pointer',
                   active
-                    ? 'border-zinc-950 bg-zinc-950 text-white shadow-xs'
+                    ? 'border-zinc-950 text-white'
                     : 'border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400 hover:text-zinc-950'
                 )}
               >
-                <Icon className="h-4 w-4" aria-hidden="true" />
-                <span>{CATEGORY_LABELS[cat]}</span>
+                {active && (
+                  <motion.span
+                    layoutId="home-category-active"
+                    transition={{ type: 'spring', stiffness: 460, damping: 36 }}
+                    className="absolute inset-0 rounded-[7px] bg-zinc-950"
+                    aria-hidden="true"
+                  />
+                )}
+                <Icon className="relative z-10 h-4 w-4" aria-hidden="true" />
+                <span className="relative z-10">{cat.label}</span>
               </button>
             );
           })}
@@ -407,8 +424,19 @@ export function HomePage() {
                 data-testid="posts-grid"
                 className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4"
               >
-                {data.items.map((post) => (
-                  <PostCard key={post.id} post={post} />
+                {data.items.map((post, idx) => (
+                  <motion.div
+                    key={post.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      duration: 0.24,
+                      delay: Math.min(idx * 0.03, 0.18),
+                      ease: [0.16, 1, 0.3, 1],
+                    }}
+                  >
+                    <PostCard post={post} />
+                  </motion.div>
                 ))}
               </div>
               <PaginationBar

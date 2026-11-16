@@ -1,7 +1,9 @@
+import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
 import { createServer as createViteServer } from 'vite';
 import { createApiApp } from './src/server/app';
+import { isSupabaseEnabled } from './src/server/db';
 
 const PORT = Number(process.env.PORT || 3000);
 
@@ -23,7 +25,8 @@ async function startServer(): Promise<void> {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Japostku server running on http://0.0.0.0:${PORT}`);
+    const storageMode = isSupabaseEnabled() ? 'Supabase PostgreSQL + Storage' : 'Penyimpanan lokal';
+    console.log(`Japostku server running on http://0.0.0.0:${PORT} [${storageMode}]`);
   });
 }
 

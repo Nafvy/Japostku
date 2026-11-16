@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { POST_CATEGORIES } from './categories';
 import { normalizeWhatsapp } from './whatsapp';
 
 export const registerSchema = z.object({
@@ -49,9 +48,12 @@ export const postInputSchema = z.object({
     .trim()
     .min(3, 'Judul minimal 3 karakter.')
     .max(80, 'Judul maksimal 80 karakter.'),
-  category: z.enum(POST_CATEGORIES, {
-    message: 'Pilih kategori yang valid.',
-  }),
+  category: z
+    .string()
+    .trim()
+    .min(1, 'Pilih kategori yang valid.')
+    .max(40, 'Kategori tidak valid.')
+    .regex(/^[a-z0-9_]+$/, 'Kategori tidak valid.'),
   priceIdr: z.coerce
     .number({ message: 'Harga harus berupa angka bulat.' })
     .int('Harga harus berupa angka bulat.')
@@ -103,6 +105,14 @@ export const ownerNoticeSchema = z.object({
     .string()
     .trim()
     .max(200, 'Pengumuman maksimal 200 karakter.'),
+});
+
+export const categoryInputSchema = z.object({
+  label: z
+    .string()
+    .trim()
+    .min(2, 'Nama kategori minimal 2 karakter.')
+    .max(32, 'Nama kategori maksimal 32 karakter.'),
 });
 
 export function validateUserImagePaths(

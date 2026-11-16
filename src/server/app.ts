@@ -13,8 +13,10 @@ import { verifyFirebaseIdToken } from './firebaseToken';
 import { toPublicPost, toUserProfile, UPLOADS_DIR, type StoredUser } from './store';
 import {
   clearAllPostRecords,
+  createCategoryRecord,
   createPostRecord,
   createUserRecord,
+  deleteCategoryRecord,
   deletePostRecord,
   getExtraUploadPrefixes,
   getOwnerNotice,
@@ -24,6 +26,7 @@ import {
   getUserById,
   listAllPosts,
   listAllUsers,
+  listCategories,
   listPostsByAuthor,
   listRecentAuditLogs,
   recordAuditLog,
@@ -35,6 +38,7 @@ import {
 } from './db';
 import {
   banSchema,
+  categoryInputSchema,
   deletePostAdminSchema,
   loginSchema,
   ownerNoticeSchema,
@@ -56,7 +60,6 @@ import {
 } from '../lib/permissions';
 import { normalizeWhatsapp } from '../lib/whatsapp';
 import { isAllowedImageMime, MAX_IMAGE_BYTES } from '../lib/images';
-import { POST_CATEGORIES } from '../lib/categories';
 import type { PostCategory, PostStatus, SortOrder } from '../lib/types';
 
 const DAILY_POST_LIMIT = 10;
@@ -69,14 +72,14 @@ type AsyncRoute = (req: AuthedRequest, res: Response, next: NextFunction) => Pro
 
 function sanitizeServerError(err: unknown): string {
   const msg = err instanceof Error ? err.message : '';
-  if (msg.includes('SUPABASE_URL') || msg.includes('Konfigurasi Supabase')) {
+  if (msg.includes('SUPABASE_URL') || msg.includes('Konfigurasi Supabase') || msg.includes('Tabel categories')) {
     return msg;
   }
   if (msg.includes('Could not find the table') || msg.includes('does not exist')) {
     return 'Tabel database Supabase belum dibuat. Jalankan skrip supabase/schema.sql di SQL Editor Supabase.';
   }
   if (msg.includes('Invalid API key') || msg.includes('JWT')) {
-    return 'Kunci SUPABASE_SERVICE_ROLE_KEY tidak valid. Periksa kembali Environment Variables Vercel.';
+    return 'Kunci SUPABASE_SERVICE_ROLE_KEY tidak valid. Periksa kembali nilai pada panel Secrets AI Studio.';
   }
   return 'Terjadi kesalahan pada server.';
 }
@@ -259,6 +262,14 @@ export function createApiApp(): Express {
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
   });
+
+  app.get(
+    '/api/categories',
+    asyncRoute(async (_req, res) => {
+      const items = await listCategories();
+      res.json({ ok: true, data: { items } });
+    })
+  );
 
   // --- Auth endpoints ---
   app.get(
@@ -479,7 +490,7 @@ export function createApiApp(): Express {
       const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? Math.floor(pageRaw) : 1;
       const pageSize = 24;
 
-      const category: PostCategory | '' = (POST_CATEGORIES as readonly string[]).includes(kategoriRaw)
+      const category: PostCategory | '' = /^[a-z0-9_]{1,40}$/.test(kategoriRaw)
         ? (kategoriRaw as PostCategory)
         : '';
       const sort: SortOrder =
@@ -614,6 +625,16 @@ export function createApiApp(): Express {
         return;
       }
 
+      const categories = await listCategories();
+      if (!categories.some((c) => c.slug === parsed.data.category)) {
+        res.status(400).json({
+          ok: false,
+          error: 'Kategori yang dipilih tidak tersedia.',
+          fieldErrors: { category: 'Pilih kategori yang masih aktif.' },
+        });
+        return;
+      }
+
       const normalizedWa = normalizeWhatsapp(parsed.data.contactWhatsapp);
       if (!normalizedWa) {
         res.status(400).json({
@@ -703,6 +724,19 @@ export function createApiApp(): Express {
           ok: false,
           error: 'Path gambar tidak valid atau bukan milik akun kamu.',
           fieldErrors: { images: 'Unggah ulang gambar milik kamu sendiri.' },
+        });
+        return;
+      }
+
+      const categories = await listCategories();
+      if (
+        parsed.data.category !== post.category &&
+        !categories.some((c) => c.slug === parsed.data.category)
+      ) {
+        res.status(400).json({
+          ok: false,
+          error: 'Kategori yang dipilih tidak tersedia.',
+          fieldErrors: { category: 'Pilih kategori yang masih aktif.' },
         });
         return;
       }
@@ -1258,7 +1292,7 @@ export function createApiApp(): Express {
 
       const status: PostStatus | '' =
         statusRaw === 'active' || statusRaw === 'sold' ? statusRaw : '';
-      const category: PostCategory | '' = (POST_CATEGORIES as readonly string[]).includes(kategoriRaw)
+      const category: PostCategory | '' = /^[a-z0-9_]{1,40}$/.test(kategoriRaw)
         ? (kategoriRaw as PostCategory)
         : '';
 
@@ -1329,6 +1363,109 @@ export function createApiApp(): Express {
       });
 
       res.json({ ok: true, data: null });
+    })
+  );
+
+  app.get(
+    '/api/admin/categories',
+    requireStaff,
+    asyncRoute(async (_req, res) => {
+      const [categories, allPosts] = await Promise.all([listCategories(), listAllPosts()]);
+      const countBySlug = new Map<string, number>();
+      for (const post of allPosts) {
+        countBySlug.set(post.category, (countBySlug.get(post.category) || 0) + 1);
+      }
+      const items = categories.map((cat) => ({
+        ...cat,
+        postCount: countBySlug.get(cat.slug) || 0,
+      }));
+      res.json({ ok: true, data: { items } });
+    })
+  );
+
+  app.post(
+    '/api/admin/categories',
+    requireStaff,
+    asyncRoute(async (req, res) => {
+      const actor = req.currentUser!;
+      const parsed = categoryInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({
+          ok: false,
+          error: 'Periksa kembali nama kategori.',
+          fieldErrors: zodFieldErrors(parsed.error),
+        });
+        return;
+      }
+
+      try {
+        const created = await createCategoryRecord(parsed.data.label);
+        await recordAuditLog({
+          actorId: actor.id,
+          actorName: actor.displayName,
+          action: 'category_add',
+          targetType: 'category',
+          targetId: created.slug,
+          targetLabel: created.label,
+          reason: null,
+        });
+        res.status(201).json({ ok: true, data: created });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : '';
+        if (msg === 'CATEGORY_INVALID_SLUG') {
+          res.status(400).json({
+            ok: false,
+            error: 'Nama kategori harus mengandung huruf atau angka minimal 2 karakter.',
+            fieldErrors: { label: 'Gunakan huruf atau angka minimal 2 karakter.' },
+          });
+          return;
+        }
+        if (msg === 'CATEGORY_DUPLICATE') {
+          res.status(409).json({
+            ok: false,
+            error: 'Kategori dengan nama tersebut sudah ada.',
+            fieldErrors: { label: 'Kategori ini sudah tersedia.' },
+          });
+          return;
+        }
+        throw err;
+      }
+    })
+  );
+
+  app.delete(
+    '/api/admin/categories/:slug',
+    requireStaff,
+    asyncRoute(async (req, res) => {
+      const actor = req.currentUser!;
+      const slug = req.params.slug;
+      try {
+        const removed = await deleteCategoryRecord(slug);
+        if (!removed) {
+          res.status(404).json({ ok: false, error: 'Kategori tidak ditemukan.' });
+          return;
+        }
+        await recordAuditLog({
+          actorId: actor.id,
+          actorName: actor.displayName,
+          action: 'category_remove',
+          targetType: 'category',
+          targetId: removed.slug,
+          targetLabel: removed.label,
+          reason: null,
+        });
+        res.json({ ok: true, data: null });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : '';
+        if (msg === 'CATEGORY_MIN_ONE') {
+          res.status(400).json({
+            ok: false,
+            error: 'Minimal harus ada satu kategori aktif.',
+          });
+          return;
+        }
+        throw err;
+      }
     })
   );
 

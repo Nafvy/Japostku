@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Banknote, FileText, Image, MessageCircle, Tag, Type } from 'lucide-react';
-import { CATEGORY_LABELS, POST_CATEGORIES } from '../../lib/categories';
+import { useCategories } from '../../context/CategoriesContext';
+import { getCategoryLabel } from '../../lib/categories';
 import { postInputSchema, zodFieldErrors } from '../../lib/schemas';
 import type { PostCategory } from '../../lib/types';
 import { Button, Input, Label, Select, Textarea } from '../ui/Primitives';
@@ -41,14 +42,33 @@ export function PostForm({
   onSubmit,
   onCancel,
 }: PostFormProps) {
+  const { categories } = useCategories();
   const [title, setTitle] = useState(initialValues.title);
-  const [category, setCategory] = useState<PostCategory>(initialValues.category);
+  const [category, setCategory] = useState<PostCategory>(
+    initialValues.category || categories[0]?.slug || 'elektronik'
+  );
   const [priceIdr, setPriceIdr] = useState(initialValues.priceIdr);
   const [description, setDescription] = useState(initialValues.description);
   const [images, setImages] = useState<string[]>(initialValues.images);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [contactWhatsapp, setContactWhatsapp] = useState(initialValues.contactWhatsapp);
   const [clientErrors, setClientErrors] = useState<Record<string, string>>({});
+
+  const categoryOptions = useMemo(() => {
+    if (
+      initialValues.category &&
+      !categories.some((c) => c.slug === initialValues.category)
+    ) {
+      return [
+        ...categories,
+        {
+          slug: initialValues.category,
+          label: getCategoryLabel(initialValues.category, categories),
+        },
+      ];
+    }
+    return categories;
+  }, [categories, initialValues.category]);
 
   const fieldErrors = { ...clientErrors, ...(serverFieldErrors || {}) };
 
@@ -142,9 +162,9 @@ export function PostForm({
             onChange={(e) => setCategory(e.target.value as PostCategory)}
             className="w-full"
           >
-            {POST_CATEGORIES.map((cat) => (
-              <option key={cat} value={cat}>
-                {CATEGORY_LABELS[cat]}
+            {categoryOptions.map((cat) => (
+              <option key={cat.slug} value={cat.slug}>
+                {cat.label}
               </option>
             ))}
           </Select>
